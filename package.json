@@ -21,7 +21,7 @@
   "scripts": {
     "sim": "bun tools/simulator/src/index.ts",
     "play": "bun tools/play/src/index.ts",
-    "typecheck": "bun --filter '*' run typecheck",
+    "typecheck": "tsc --noEmit -p packages/mock-platform && tsc --noEmit -p packages/lua-kit && tsc --noEmit -p tools/play && tsc --noEmit -p tools/simulator && tsc --noEmit -p games/limbo && tsc --noEmit -p games/dice && tsc --noEmit -p games/plinko && tsc --noEmit -p games/mines && tsc --noEmit -p games/tower && tsc --noEmit -p games/chicken-road && tsc --noEmit -p games/crash && tsc --noEmit -p games/blackjack",
     "docs:build": "bun docs/build.ts"
   },
   "devDependencies": {
