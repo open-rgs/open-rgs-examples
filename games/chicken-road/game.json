@@ -1,0 +1,22 @@
+{
+  "id": "chicken-road",
+  "title": "Chicken Road",
+  "emoji": "🐔",
+  "kind": "complex",
+  "category": "ladder",
+  "rtp": 0.99,
+  "tagline": "Cross lane by lane, multiplier rising — cash out before you get hit.",
+  "mechanic": "Each lane is survived with probability p (set by difficulty). After n lanes the multiplier is RTP ÷ p^n. The only choice is when to stop. Lower difficulty = more lanes, smaller steps; daredevil = rarely survive, huge steps.",
+  "showcases": [
+    "single-action complex ladder (no options, just 'cross')",
+    "difficulty-driven hazard, identical EV math to Crash",
+    "settle-at-current autoclose"
+  ],
+  "params": [
+    { "name": "difficulty", "type": "string", "default": "medium", "range": "easy | medium | hard | daredevil" }
+  ],
+  "maxWin": "capped 1,000,000×",
+  "strategyDependent": false,
+  "mathTest": "Constant-EV: every cash-out lane has expected value RTP, so `--compare` across stop-points is flat at 0.99 for each difficulty.",
+  "suggestedPort": 8086
+}

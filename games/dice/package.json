@@ -1,0 +1,20 @@
+{
+  "name": "@open-rgs-examples/dice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dice — pick a target and roll over or under it. Payout follows the win chance, so the edge is constant.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-rgs/core": "^1.0.0",
+    "@open-rgs/contract": "^1.0.0",
+    "@open-rgs-examples/mock-platform": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

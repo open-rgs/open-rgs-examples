@@ -1,0 +1,21 @@
+{
+  "name": "@open-rgs-examples/blackjack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Blackjack — the strategy-dependent example. RTP is set by how you play, so it's the case for strategy-aware math testing. Infinite deck, S17, hit/stand only.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-rgs/core": "^1.0.0",
+    "@open-rgs/contract": "^1.0.0",
+    "@open-rgs-examples/mock-platform": "workspace:*",
+    "@open-rgs-examples/lua-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

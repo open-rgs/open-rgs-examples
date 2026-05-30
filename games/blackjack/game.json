@@ -1,0 +1,20 @@
+{
+  "id": "blackjack",
+  "title": "Blackjack",
+  "emoji": "🃏",
+  "kind": "complex",
+  "category": "table",
+  "rtp": 0.974,
+  "tagline": "The strategy-dependent one — RTP is set by how you play.",
+  "mechanic": "Standard blackjack: infinite deck, dealer stands on 17, blackjack pays 3:2, hit/stand only. Unlike the ladders, there's no fair-multiplier trick — the house edge emerges from rules + player decisions. The declared 97.4% holds only under basic strategy; doubles and splits (omitted here) would add ~2%.",
+  "showcases": [
+    "a STRATEGY-DEPENDENT complex round (the counter-example)",
+    "why a generic simulator is meaningless here",
+    "the open→close money flow can't double/split (needs a 2nd wager)"
+  ],
+  "params": [],
+  "maxWin": "2.5× (blackjack 3:2)",
+  "strategyDependent": true,
+  "mathTest": "Drive it with the reference strategy: `--strategy basic` ≈ declared RTP, while `--compare` shows hit-always / stand-always / random all UNDERperform. Generic first/random simulation reads as a 'fail' — by design.",
+  "suggestedPort": 8088
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@open-rgs-examples/tower",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tower — climb row by row, pick the safe tile, cash out before you misstep. A constant-hazard survival ladder.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-rgs/core": "^1.0.0",
+    "@open-rgs/contract": "^1.0.0",
+    "@open-rgs-examples/mock-platform": "workspace:*",
+    "@open-rgs-examples/lua-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

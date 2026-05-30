@@ -1,0 +1,8 @@
+node_modules/
+dist/
+docs/dist/
+reports/
+*.log
+.DS_Store
+# bun
+bun.lockb

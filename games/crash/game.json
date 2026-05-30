@@ -1,0 +1,22 @@
+{
+  "id": "crash",
+  "title": "Crash",
+  "emoji": "📈",
+  "kind": "complex",
+  "category": "ladder",
+  "rtp": 0.99,
+  "tagline": "Ride the rising multiplier; cash out before it busts.",
+  "mechanic": "Each tick survives with probability p (volatility). The multiplier rises to RTP ÷ p^ticks; a bust wipes it. Same survival-ladder math as Chicken Road, drawn as a curve. Progression is client-driven because open-rgs has no in-process timers — a real live-crash needs a time oracle.",
+  "showcases": [
+    "tick-based complex round (client-paced, no server timer)",
+    "ADR-003 in practice: external-only progression",
+    "the survival-ladder family, framed as a curve"
+  ],
+  "params": [
+    { "name": "volatility", "type": "string", "default": "medium", "range": "low | medium | high" }
+  ],
+  "maxWin": "capped 1,000,000×",
+  "strategyDependent": false,
+  "mathTest": "Constant-EV ladder: cashing at any tick has expected value RTP, so the measured RTP is 0.99 regardless of when the simulator's strategy bails.",
+  "suggestedPort": 8087
+}

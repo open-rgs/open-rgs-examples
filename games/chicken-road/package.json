@@ -1,0 +1,21 @@
+{
+  "name": "@open-rgs-examples/chicken-road",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chicken Road — cross lane by lane, multiplier rising, cash out before you get hit. A single-action survival ladder with difficulty levels.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-rgs/core": "^1.0.0",
+    "@open-rgs/contract": "^1.0.0",
+    "@open-rgs-examples/mock-platform": "workspace:*",
+    "@open-rgs-examples/lua-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

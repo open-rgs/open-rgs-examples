@@ -1,0 +1,21 @@
+{
+  "name": "@open-rgs-examples/crash",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Crash — ride the rising multiplier and cash out before it busts. A tick-based survival ladder (with an honest note on why live cash-out needs a time oracle).",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-rgs/core": "^1.0.0",
+    "@open-rgs/contract": "^1.0.0",
+    "@open-rgs-examples/mock-platform": "workspace:*",
+    "@open-rgs-examples/lua-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

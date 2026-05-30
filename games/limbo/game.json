@@ -1,0 +1,22 @@
+{
+  "id": "limbo",
+  "title": "Limbo",
+  "emoji": "🚀",
+  "kind": "simple",
+  "category": "instant",
+  "rtp": 0.99,
+  "tagline": "Pick a target multiplier; win it if the roll flies high enough.",
+  "mechanic": "A heavy-tailed result R is drawn with P(R ≥ x) = RTP/x. You win your chosen target T whenever R ≥ T. EV is RTP for every target, so the house edge never depends on how greedy you are.",
+  "showcases": [
+    "SimpleMath play() — open and settle in one call",
+    "constant-EV fair draw (target-independent RTP)",
+    "host.mark.* annotations feeding the simulator's deviation report"
+  ],
+  "params": [
+    { "name": "target", "type": "number", "default": 2.0, "range": "1.01 – 1,000,000", "note": "auto-cashout multiplier" }
+  ],
+  "maxWin": "1,000,000×",
+  "strategyDependent": false,
+  "mathTest": "RTP is provably independent of the target — the simulator measures 0.99 with the default target, and --compare across targets stays flat.",
+  "suggestedPort": 8081
+}

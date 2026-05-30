@@ -1,0 +1,18 @@
+{
+  "name": "@open-rgs-examples/simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "bun run sim --game <name> — RTP + hit-rate for simple games, and strategy-aware RTP / --compare for complex ones.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-rgs/contract": "^1.0.0",
+    "@open-rgs/simulator": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

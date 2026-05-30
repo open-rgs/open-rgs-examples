@@ -1,0 +1,22 @@
+{
+  "name": "@open-rgs-examples/lua-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lua extensions the example games load via loadLuaMath — currently a pure-Lua JSON codec for serializing complex-round state.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-rgs/contract": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}

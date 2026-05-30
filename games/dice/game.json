@@ -1,0 +1,23 @@
+{
+  "id": "dice",
+  "title": "Dice",
+  "emoji": "🎲",
+  "kind": "simple",
+  "category": "instant",
+  "rtp": 0.99,
+  "tagline": "Set a target, roll over or under it. Higher risk, higher payout.",
+  "mechanic": "A roll lands uniformly in [0, 100). You choose a target and direction; payout = RTP ÷ win-chance. Every target has the same expected value, so the slider only trades frequency for size.",
+  "showcases": [
+    "SimpleMath play() with client params (target + direction)",
+    "win-chance ⇆ payout, constant EV",
+    "the same fair engine as Limbo, framed as a probability"
+  ],
+  "params": [
+    { "name": "target", "type": "number", "default": 50.0, "range": "0.01 – 99.99" },
+    { "name": "over", "type": "boolean", "default": false, "note": "true = roll over the target" }
+  ],
+  "maxWin": "capped 10,000×",
+  "strategyDependent": false,
+  "mathTest": "RTP is independent of target and direction — sweep them with --compare and the measured RTP stays at 0.99.",
+  "suggestedPort": 8082
+}

@@ -1,0 +1,25 @@
+{
+  "id": "tower",
+  "title": "Tower",
+  "emoji": "🗼",
+  "kind": "complex",
+  "category": "ladder",
+  "rtp": 0.99,
+  "tagline": "Climb row by row; pick the safe tile or fall.",
+  "mechanic": "Each row has `tiles` cells with `danger` fatal ones. A safe pick climbs you up and raises the multiplier to RTP ÷ p^rows-climbed (p = survival per row). Cash out any time. Mines, but with a constant per-step hazard.",
+  "showcases": [
+    "ComplexMath ladder with constant per-step survival",
+    "per-row choice (options) vs Crash/Chicken's single action",
+    "fixed-at-open provably-fair layout",
+    "settle-at-current autoclose"
+  ],
+  "params": [
+    { "name": "rows", "type": "int", "default": 8, "range": "1 – 20" },
+    { "name": "tiles", "type": "int", "default": 3, "range": "2 – 6" },
+    { "name": "danger", "type": "int", "default": 1, "range": "1 – tiles-1" }
+  ],
+  "maxWin": "capped 100,000×",
+  "strategyDependent": false,
+  "mathTest": "Constant-EV ladder: `--compare` across cash-out depths is flat at RTP. The built-in simulator climbs one row and cashes, already measuring 0.99.",
+  "suggestedPort": 8085
+}

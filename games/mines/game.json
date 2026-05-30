@@ -1,0 +1,24 @@
+{
+  "id": "mines",
+  "title": "Mines",
+  "emoji": "💣",
+  "kind": "complex",
+  "category": "ladder",
+  "rtp": 0.99,
+  "tagline": "Reveal safe tiles to climb the multiplier; one mine ends it.",
+  "mechanic": "M mines hide on a 5×5 grid. Each safe reveal raises the multiplier to the fair value RTP ÷ P(survived so far). Cash out (CLOSE) any time; hit a mine and you lose the lot. EV at every cash-out point is exactly RTP.",
+  "showcases": [
+    "ComplexMath open/step/close/is_terminal in Lua",
+    "JSON round-state via the json Lua extension",
+    "cash-out = close(), gated on is_terminal()",
+    "settle-at-current autoclose()",
+    "constant-EV survival ladder"
+  ],
+  "params": [
+    { "name": "mines", "type": "int", "default": 3, "range": "1 – 24", "note": "more mines → steeper climb, higher variance" }
+  ],
+  "maxWin": "capped 1,000,000×",
+  "strategyDependent": false,
+  "mathTest": "EV is independent of when you cash out, so `--compare` across cash-out depths stays flat at RTP — and the built-in simulator (which cashes after one tile) already measures it.",
+  "suggestedPort": 8084
+}

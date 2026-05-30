@@ -1,0 +1,23 @@
+{
+  "id": "plinko",
+  "title": "Plinko",
+  "emoji": "🔺",
+  "kind": "simple",
+  "category": "instant",
+  "rtp": 0.99,
+  "tagline": "Drop the ball; where it lands is pure binomial luck.",
+  "mechanic": "The ball takes `rows` left/right bounces, landing in bucket b with probability C(rows,b)/2^rows. The payout table is solved (not guessed) so Σ P(b)·payout(b) = RTP. No decisions — it's a variance dial via the risk level.",
+  "showcases": [
+    "SimpleMath with no player decision (pure variance)",
+    "a payout table solved to a target RTP",
+    "binomial distribution + risk levels"
+  ],
+  "params": [
+    { "name": "rows", "type": "int", "default": 16, "range": "8 – 20" },
+    { "name": "risk", "type": "string", "default": "medium", "range": "low | medium | high" }
+  ],
+  "maxWin": "capped 10,000×",
+  "strategyDependent": false,
+  "mathTest": "No decisions to make, so RTP is whatever the table integrates to — the simulator confirms it lands on 0.99 for every rows/risk combination.",
+  "suggestedPort": 8083
+}
