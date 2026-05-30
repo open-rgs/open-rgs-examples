@@ -55,6 +55,7 @@
       "name": "@open-rgs-examples/dice",
       "version": "1.0.0",
       "dependencies": {
+        "@open-rgs-examples/lua-kit": "workspace:*",
         "@open-rgs-examples/mock-platform": "workspace:*",
         "@open-rgs/contract": "^1.0.0",
         "@open-rgs/core": "^1.0.0",
@@ -68,6 +69,7 @@
       "name": "@open-rgs-examples/limbo",
       "version": "1.0.0",
       "dependencies": {
+        "@open-rgs-examples/lua-kit": "workspace:*",
         "@open-rgs-examples/mock-platform": "workspace:*",
         "@open-rgs/contract": "^1.0.0",
         "@open-rgs/core": "^1.0.0",
@@ -95,7 +97,36 @@
       "name": "@open-rgs-examples/plinko",
       "version": "1.0.0",
       "dependencies": {
+        "@open-rgs-examples/lua-kit": "workspace:*",
         "@open-rgs-examples/mock-platform": "workspace:*",
+        "@open-rgs/contract": "^1.0.0",
+        "@open-rgs/core": "^1.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "typescript": "^6.0.3",
+      },
+    },
+    "games/slots-classic": {
+      "name": "@open-rgs-examples/slots-classic",
+      "version": "1.0.0",
+      "dependencies": {
+        "@open-rgs-examples/lua-kit": "workspace:*",
+        "@open-rgs-examples/mock-platform": "workspace:*",
+        "@open-rgs/contract": "^1.0.0",
+        "@open-rgs/core": "^1.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "typescript": "^6.0.3",
+      },
+    },
+    "games/slots-meta": {
+      "name": "@open-rgs-examples/slots-meta",
+      "version": "1.0.0",
+      "dependencies": {
+        "@open-rgs-examples/lua-kit": "workspace:*",
+        "@open-rgs-examples/meta-platform": "workspace:*",
         "@open-rgs/contract": "^1.0.0",
         "@open-rgs/core": "^1.0.0",
       },
@@ -129,11 +160,37 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/meta-platform": {
+      "name": "@open-rgs-examples/meta-platform",
+      "version": "0.1.0",
+      "dependencies": {
+        "@open-rgs/contract": "^1.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/mock-platform": {
       "name": "@open-rgs-examples/mock-platform",
       "version": "0.1.0",
       "dependencies": {
         "@open-rgs/contract": "^1.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "typescript": "^6.0.3",
+      },
+    },
+    "tools/attack": {
+      "name": "@open-rgs-examples/attack",
+      "version": "0.1.0",
+      "dependencies": {
+        "@open-rgs-examples/meta-platform": "workspace:*",
+        "@open-rgs-examples/mock-platform": "workspace:*",
+        "@open-rgs/client": "^1.0.0",
+        "@open-rgs/contract": "^1.0.0",
+        "@open-rgs/core": "^1.0.0",
       },
       "devDependencies": {
         "@types/bun": "^1.3.14",
@@ -170,6 +227,8 @@
   "packages": {
     "@msgpack/msgpack": ["@msgpack/msgpack@3.1.3", "", {}, "sha512-47XIizs9XZXvuJgoaJUIE2lFoID8ugvc0jzSHP+Ptfk8nTbnR8g788wv48N03Kx0UkAv559HWRQ3yzOgzlRNUA=="],
 
+    "@open-rgs-examples/attack": ["@open-rgs-examples/attack@workspace:tools/attack"],
+
     "@open-rgs-examples/blackjack": ["@open-rgs-examples/blackjack@workspace:games/blackjack"],
 
     "@open-rgs-examples/chicken-road": ["@open-rgs-examples/chicken-road@workspace:games/chicken-road"],
@@ -182,6 +241,8 @@
 
     "@open-rgs-examples/lua-kit": ["@open-rgs-examples/lua-kit@workspace:packages/lua-kit"],
 
+    "@open-rgs-examples/meta-platform": ["@open-rgs-examples/meta-platform@workspace:packages/meta-platform"],
+
     "@open-rgs-examples/mines": ["@open-rgs-examples/mines@workspace:games/mines"],
 
     "@open-rgs-examples/mock-platform": ["@open-rgs-examples/mock-platform@workspace:packages/mock-platform"],
@@ -191,6 +252,10 @@
     "@open-rgs-examples/plinko": ["@open-rgs-examples/plinko@workspace:games/plinko"],
 
     "@open-rgs-examples/simulator": ["@open-rgs-examples/simulator@workspace:tools/simulator"],
+
+    "@open-rgs-examples/slots-classic": ["@open-rgs-examples/slots-classic@workspace:games/slots-classic"],
+
+    "@open-rgs-examples/slots-meta": ["@open-rgs-examples/slots-meta@workspace:games/slots-meta"],
 
     "@open-rgs-examples/tower": ["@open-rgs-examples/tower@workspace:games/tower"],
 

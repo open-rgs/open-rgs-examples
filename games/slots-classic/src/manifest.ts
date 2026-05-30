@@ -1,4 +1,5 @@
-// plinko — manifest builder. Simple round; shared by dev / play / sim.
+// slots-classic — manifest builder. SimpleMath; free spins resolve atomically
+// inside the trigger spin, so the safe param reader is all it needs.
 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +23,7 @@ export interface BuildOptions {
 }
 
 export async function buildManifest(opts: BuildOptions = {}): Promise<GameManifest> {
-  const math = await loadLuaMath(resolve(here, "../maths/plinko.lua"), {
+  const math = await loadLuaMath(resolve(here, "../maths/slots-classic.lua"), {
     rng: opts.rng ?? cryptoRng,
     timeoutMs: opts.timeoutMs ?? 1000,
     marks: opts.marks ?? false,
@@ -30,12 +31,12 @@ export async function buildManifest(opts: BuildOptions = {}): Promise<GameManife
   });
 
   return defineGame({
-    id: "plinko",
-    declaredRtp: 0.99,
+    id: "slots-classic",
+    declaredRtp: 0.94,
     defaultMode: "default",
-    maxWinMultiplier: 10_000,
+    maxWinMultiplier: 5000,
     modes: {
-      default: { math, stakeMultiplier: 1, label: "Plinko" },
+      default: { math, stakeMultiplier: 1, label: "Classic Slots — Free Spins" },
     },
   });
 }

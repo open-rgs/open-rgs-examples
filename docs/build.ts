@@ -191,6 +191,7 @@ function buildIndex(games: Game[]): string {
     { key: "instant", title: "Instant games" },
     { key: "ladder", title: "Survival ladders" },
     { key: "table", title: "Table games" },
+    { key: "slots", title: "Slots" },
   ];
   const sections = groups.map((grp) => {
     const inGroup = games.filter((g) => g.category === grp.key);
@@ -205,8 +206,9 @@ function buildIndex(games: Game[]): string {
   <p style="margin-top:18px"><span class="kbd">cd games/limbo</span> &nbsp;<span class="kbd">bun install</span> &nbsp;<span class="kbd">bun run dev</span></p>
   <nav class="top">
     <a href="./math-testing.html">→ How to math-test these games</a>
+    <a href="https://github.com/open-rgs/open-rgs-examples/blob/main/docs/slots.md">→ Slots: meta-progression &amp; the exploit it invites</a>
+    <a href="https://github.com/open-rgs/open-rgs-examples/blob/main/docs/security.md">→ Antifraud red-team</a>
     <a href="https://github.com/open-rgs/open-rgs-examples">GitHub</a>
-    <a href="https://open-rgs.dev">open-rgs docs</a>
   </nav>
 </div></header>
 <main class="wrap">

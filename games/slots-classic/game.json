@@ -1,0 +1,20 @@
+{
+  "id": "slots-classic",
+  "title": "Classic Slots",
+  "emoji": "🎰",
+  "kind": "simple",
+  "category": "slots",
+  "rtp": 0.94,
+  "tagline": "5×3 lines slot; 3+ scatters trigger free spins.",
+  "mechanic": "Ten paylines, wilds, and a scatter that awards 10–20 free spins. The crucial design choice: the free spins are simulated and paid ATOMICALLY inside the trigger spin — one lump-sum settle at the trigger bet. No cross-round state, so nothing can be replayed or exploited at a different bet.",
+  "showcases": [
+    "a real reel/payline/wild/scatter slot in Lua",
+    "free spins resolved in ONE settle (no deferred payout)",
+    "the safe baseline — contrast with slots-meta"
+  ],
+  "params": [],
+  "maxWin": "capped 5,000×",
+  "strategyDependent": false,
+  "mathTest": "Pure variance, no decisions — the simulator measures RTP directly; host.mark splits base vs free-spin RTP contribution.",
+  "suggestedPort": 8089
+}

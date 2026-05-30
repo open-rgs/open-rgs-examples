@@ -24,13 +24,9 @@ return {
   },
 
   play = function(_prev, ctx)
-    local target, over = SIM_TARGET, SIM_OVER
-    if ctx and ctx.params then
-      if ctx.params.target then target = tonumber(ctx.params.target) or target end
-      if ctx.params.over ~= nil then over = ctx.params.over and true or false end
-    end
-    if target < 0.01 then target = 0.01 end
-    if target > 99.99 then target = 99.99 end
+    -- Safe client-param reads (null/object/NaN can't crash us — see lua-kit).
+    local target = params.num(ctx, "target", SIM_TARGET, 0.01, 99.99)
+    local over   = params.bool(ctx, "over", SIM_OVER)
 
     local roll = host.rng_next() * 100.0   -- [0, 100)
     local win_chance, won

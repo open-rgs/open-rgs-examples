@@ -85,12 +85,9 @@ return {
   },
 
   open = function(_prev, ctx)
-    local m = SIM_MINES
-    if ctx and ctx.params and ctx.params.mines then
-      m = math.floor(tonumber(ctx.params.mines) or SIM_MINES)
-    end
-    if m < 1 then m = 1 end
-    if m > TILES - 1 then m = TILES - 1 end
+    -- Safe client-param read: null/object/NaN can't crash us (see lua-kit).
+    -- Clamped to [1, TILES-1] and floored to an integer.
+    local m = params.num(ctx, "mines", SIM_MINES, 1, TILES - 1, true)
 
     local state = { mines = place_mines(m), revealed = {}, busted = false }
     return {

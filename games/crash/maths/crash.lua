@@ -42,10 +42,10 @@ return {
   },
 
   open = function(_prev, ctx)
-    local name = SIM_VOLATILITY
-    if ctx and ctx.params and ctx.params.volatility then
-      name = tostring(ctx.params.volatility)
-    end
+    -- Safe client-param read: only a known volatility passes (see lua-kit);
+    -- null/object/unknown string falls back to the default.
+    local name = params.str(ctx, "volatility", SIM_VOLATILITY,
+      { low = true, medium = true, high = true })
     local p = VOLATILITY[name] or VOLATILITY[SIM_VOLATILITY]
     local state = { tick = 0, p = p, volatility = name, busted = false }
     return {

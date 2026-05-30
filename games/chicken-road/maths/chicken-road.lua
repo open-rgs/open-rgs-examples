@@ -38,10 +38,10 @@ return {
   },
 
   open = function(_prev, ctx)
-    local name = SIM_DIFFICULTY
-    if ctx and ctx.params and ctx.params.difficulty then
-      name = tostring(ctx.params.difficulty)
-    end
+    -- Safe client-param read: only a known difficulty passes (see lua-kit);
+    -- null/object/unknown string falls back to the default.
+    local name = params.str(ctx, "difficulty", SIM_DIFFICULTY,
+      { easy = true, medium = true, hard = true, daredevil = true })
     local cfg = DIFFICULTY[name] or DIFFICULTY[SIM_DIFFICULTY]
     local state = { lane = 0, p = cfg.p, max = cfg.lanes, difficulty = name, busted = false }
     return {

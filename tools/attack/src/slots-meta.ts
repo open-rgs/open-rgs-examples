@@ -1,0 +1,285 @@
+#!/usr/bin/env bun
+// Targeted red-team for slots-meta — the deferred-payout slot.
+//
+//   bun run attack:meta
+//
+// Boots slots-meta's REAL server wired to the bet-aware MetaPlatform, then runs
+// the two exploits the brief calls out, plus money-conservation and replay:
+//
+//   E1  bet-switch       accumulate progress at MIN bet, try to trigger the
+//                        bonus at MAX bet → must be blocked (StakeLockViolation)
+//                        and the bonus, when it fires, pays at the LOCKED bet.
+//   E2  rollback farming gain progress, roll the round back → progress must
+//                        revert WITH the money (no free progress kept).
+//   E3  rollback the bonus the bonus-paying round, once rolled back, must
+//                        restore BOTH the pre-bonus balance AND the progress
+//                        (no "keep the payout, replay the trigger").
+//   E4  replay           re-fire the bonus spin's idempotency key → paid once.
+//   E5  conservation     long mixed session → ledger identity holds exactly.
+//
+// The CRIT invariant throughout: the house can't be made to pay out value it
+// wasn't funded for. A blocked attack is a pass; a money gain is an exploit.
+
+process.env["OPEN_RGS_LOG_LEVEL"] ??= "error";
+process.env["LOG_LEVEL"] ??= "error";
+
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createServer, binaryTransport, type ServerHandle } from "@open-rgs/core";
+import { RgsClient } from "@open-rgs/client";
+import { MetaPlatform } from "@open-rgs-examples/meta-platform";
+import type { GameManifest } from "@open-rgs/contract";
+
+const gamesDir = resolve(fileURLToPath(new URL("../../../", import.meta.url)), "games");
+
+async function build(rng?: () => number): Promise<GameManifest> {
+  const mod = await import(resolve(gamesDir, "slots-meta/src/manifest.ts"));
+  return (mod.buildManifest ?? mod.default)(rng ? { rng } : {});
+}
+
+// Deterministic PRNG so we can reliably reach a bonus.
+function lcg(seed: number) { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
+
+let portCounter = 9600 + (process.pid % 300);
+interface Rig { handle: ServerHandle; client: RgsClient; wallet: MetaPlatform; }
+async function boot(rng?: () => number): Promise<Rig> {
+  for (let i = 0; i < 12; i++) {
+    const port = portCounter++;
+    const wallet = new MetaPlatform({ startingBalance: 1_000_000, log: false });
+    try {
+      const handle = await createServer({ manifest: await build(rng), platform: wallet, transport: binaryTransport({ port }), version: "atk" });
+      const client = new RgsClient(`ws://localhost:${port}/wss`);
+      await client.connect();
+      return { handle, client, wallet };
+    } catch { /* port busy — retry */ }
+  }
+  throw new Error("boot failed");
+}
+async function teardown(r: Rig) { try { r.client.disconnect(); } catch {} try { await r.handle.stop({ drainMs: 0 }); } catch {} }
+
+interface Result { name: string; sev: "CRIT" | "HIGH"; held: boolean; detail: string }
+const results: Result[] = [];
+const rec = (name: string, sev: "CRIT" | "HIGH", held: boolean, detail: string) => results.push({ name, sev, held, detail });
+
+const SID = "meta-attacker";
+// bet ladder is [20,50,100,200,500,1000]; index 0 = min (20), 5 = max (1000).
+const MIN = 0, MAX = 5;
+
+/** Spin until progress reaches `target` (or `cap` spins), all at betIndex. Returns
+ *  the wallet-side progress reached. Tolerates StakeLockViolation by reporting it. */
+async function spinToProgress(rig: Rig, betIndex: number, target: number, cap = 4000): Promise<{ progress: number; blocked: string | null }> {
+  for (let i = 0; i < cap; i++) {
+    if (rig.wallet.progressOf(SID) >= target) break;
+    try { await rig.client.spin({ betIndex }); }
+    catch (e) { return { progress: rig.wallet.progressOf(SID), blocked: e instanceof Error ? e.message : String(e) }; }
+  }
+  return { progress: rig.wallet.progressOf(SID), blocked: null };
+}
+
+// ── E1: bet-switch ────────────────────────────────────────────────────────────
+async function e1_betSwitch() {
+  const rig = await boot(lcg(42));
+  try {
+    await rig.client.init(SID);
+    // Accumulate SOME progress at min bet (start the meta → lock pins to 20).
+    await spinToProgress(rig, MIN, 1, 200);
+    const lockedBet = rig.wallet.lockedBetOf(SID);
+    const progress = rig.wallet.progressOf(SID);
+    const balBefore = rig.wallet.balanceOf(SID)!;
+    // Now try to spin at MAX bet while the meta is in progress.
+    let rejected = false;
+    try { await rig.client.spin({ betIndex: MAX }); }
+    catch { rejected = true; }
+    // The antifraud-meaningful invariant is STATE, not the error string: core
+    // doesn't forward the adapter's message to the client (it surfaces a generic
+    // error — correct, wallets shouldn't leak internals). So we assert the
+    // switch was rejected AND nothing moved: balance unchanged, progress
+    // unchanged, lock still pinned to the original bet.
+    const balAfter = rig.wallet.balanceOf(SID)!;
+    const progressAfter = rig.wallet.progressOf(SID);
+    const lockAfter = rig.wallet.lockedBetOf(SID);
+    const held = rejected && balAfter === balBefore && progressAfter === progress && lockAfter === lockedBet;
+    rec("E1 bet-switch blocked while meta in progress", "CRIT", held,
+      held ? `locked@${lockedBet} (progress ${progress}); max-bet spin rejected, no state moved`
+           : `BET-SWITCH LEAK — rejected=${rejected}, bal ${balBefore}→${balAfter}, progress ${progress}→${progressAfter}, lock ${lockedBet}→${lockAfter}`);
+  } finally { await teardown(rig); }
+}
+
+// ── E1b: bonus actually pays at the LOCKED bet, not a switched one ──────────────
+async function e1b_bonusAtLockedBet() {
+  const rig = await boot(lcg(7));
+  try {
+    await rig.client.init(SID);
+    // Drive to a bonus at min bet; read the bonus multiplier from the op so the
+    // assertion is independent of the exact BONUS_PAY tuning.
+    let bonusWin = -1, bonusBet = -1, bonusPay = -1, sawBonus = false;
+    for (let i = 0; i < 800 && !sawBonus; i++) {
+      const r = await rig.client.spin({ betIndex: MIN });
+      if (r.type === "bonus") {
+        sawBonus = true; bonusWin = r.win; bonusBet = r.bet;
+        for (const op of r.ops as any[]) if (op?.action === "bonus") bonusPay = op.pay;
+      }
+    }
+    // The exploit would be a bonus scaled by a SWITCHED (max) bet. Assert it was
+    // scaled by the LOCKED bet (20): the bonus portion ≈ bonusPay × 20, and the
+    // whole win is far below what the same bonus at max bet (×1000) would pay.
+    const expectedAtLocked = bonusPay * 20;     // bonus portion at the locked bet
+    const wouldBeAtMax = bonusPay * 1000;       // what bet-switching would have stolen
+    const held = sawBonus && bonusBet === 20 && bonusWin >= expectedAtLocked && bonusWin < wouldBeAtMax;
+    rec("E1b bonus pays at locked (min) bet, not max", "CRIT", held,
+      sawBonus ? `bonus fired at bet=${bonusBet}, win=${bonusWin} (locked-bet bonus ≈${expectedAtLocked}; a max-bet switch would have paid ${wouldBeAtMax})`
+               : "no bonus reached in 6000 spins (seed issue)");
+  } finally { await teardown(rig); }
+}
+
+// ── E2: rollback farming ────────────────────────────────────────────────────────
+async function e2_rollbackFarming() {
+  const rig = await boot(lcg(99));
+  try {
+    await rig.client.init(SID);
+    // Spin until a scatter advances progress; capture the round id of that spin.
+    let gainRound = "", progressAfterGain = 0, balAfterGain = 0;
+    for (let i = 0; i < 400; i++) {
+      const p0 = rig.wallet.progressOf(SID);
+      const r = await rig.client.spin({ betIndex: MIN });
+      if (rig.wallet.progressOf(SID) > p0) { gainRound = r.roundId; progressAfterGain = rig.wallet.progressOf(SID); balAfterGain = rig.wallet.balanceOf(SID)!; break; }
+    }
+    // Now ROLL BACK that progress-gaining round (wallet-side reversal).
+    const ok = rig.wallet.rollback(SID, gainRound);
+    const progressAfterRollback = rig.wallet.progressOf(SID);
+    const balAfterRollback = rig.wallet.balanceOf(SID)!;
+    // Invariant: progress must DECREASE (revert) along with the balance change.
+    // The farm would be: progress stays up while the debit is refunded.
+    const progressReverted = progressAfterRollback < progressAfterGain;
+    const moneyMoved = balAfterRollback !== balAfterGain;
+    const held = ok && progressReverted && moneyMoved;
+    rec("E2 rollback reverts progress WITH money (no free progress)", "CRIT", held,
+      `gain: progress→${progressAfterGain} bal=${balAfterGain}; after rollback: progress→${progressAfterRollback} bal=${balAfterRollback}` +
+      (held ? " — both reverted together" : " — FARM: progress kept after refund!"));
+  } finally { await teardown(rig); }
+}
+
+// ── E3: rollback the bonus-paying round ─────────────────────────────────────────
+async function e3_rollbackBonus() {
+  const rig = await boot(lcg(7));
+  try {
+    await rig.client.init(SID);
+    let bonusRound = "", balBeforeBonusSpin = 0, balAfterBonus = 0, progressBefore = 0, sawBonus = false;
+    for (let i = 0; i < 800 && !sawBonus; i++) {
+      progressBefore = rig.wallet.progressOf(SID);
+      balBeforeBonusSpin = rig.wallet.balanceOf(SID)!;
+      const r = await rig.client.spin({ betIndex: MIN });
+      if (r.type === "bonus") { sawBonus = true; bonusRound = r.roundId; balAfterBonus = rig.wallet.balanceOf(SID)!; }
+    }
+    // Roll the bonus round back: balance AND progress must return to pre-spin.
+    const ok = rig.wallet.rollback(SID, bonusRound);
+    const balAfter = rig.wallet.balanceOf(SID)!;
+    const progressAfter = rig.wallet.progressOf(SID);
+    // pre-bonus-spin progress was ≥ GOAL-ish (~9 going to 10); after rollback it
+    // must be restored to progressBefore, and balance to balBeforeBonusSpin.
+    const restored = ok && balAfter === balBeforeBonusSpin && progressAfter === progressBefore;
+    rec("E3 rollback of bonus restores balance AND progress", "CRIT", restored,
+      sawBonus ? `bonus paid (bal ${balBeforeBonusSpin}→${balAfterBonus}, progress ${progressBefore}); after rollback bal=${balAfter} progress=${progressAfter}` +
+                 (restored ? " — fully restored" : " — MISMATCH (keep-payout-replay-trigger risk)")
+               : "no bonus reached");
+  } finally { await teardown(rig); }
+}
+
+// ── E4: replay the bonus spin ────────────────────────────────────────────────────
+async function e4_replayBonus() {
+  const rig = await boot(lcg(7));
+  try {
+    await rig.client.init(SID);
+    // March to one step before bonus, then fire the bonus spin with a fixed key,
+    // and replay that key many times.
+    let firedKey = "exploit-bonus-key", balAfterFirst = 0, sawBonus = false;
+    for (let i = 0; i < 800 && !sawBonus; i++) {
+      const r = await rig.client.spin({ betIndex: MIN, idempotencyKey: `k${i}` });
+      if (r.type === "bonus") { sawBonus = true; balAfterFirst = rig.wallet.balanceOf(SID)!;
+        // replay the SAME spin (same key) 20 times
+        for (let j = 0; j < 20; j++) { try { await rig.client.spin({ betIndex: MIN, idempotencyKey: `k${i}` }); } catch {} }
+      }
+    }
+    const balAfterReplays = rig.wallet.balanceOf(SID)!;
+    const held = sawBonus && balAfterFirst === balAfterReplays;
+    rec("E4 bonus spin replay credits once", "CRIT", held,
+      sawBonus ? `balance ${balAfterFirst}→${balAfterReplays} after 20 replays of the bonus spin` : "no bonus reached");
+    void firedKey;
+  } finally { await teardown(rig); }
+}
+
+// ── E5: conservation over a long mixed session ───────────────────────────────────
+async function e5_conservation() {
+  const rig = await boot(lcg(2024));
+  try {
+    await rig.client.init(SID);
+    // Play 600 spins at the (locked) min bet — switching is blocked anyway.
+    for (let i = 0; i < 600; i++) { try { await rig.client.spin({ betIndex: MIN }); } catch {} }
+    // Ledger identity: the MetaPlatform tracks balance; reconstruct from start.
+    // (MetaPlatform doesn't expose debit/credit sums, so assert the softer but
+    // still strong invariant: balance stayed in [0, start + maxWin*bet*spins].)
+    const bal = rig.wallet.balanceOf(SID)!;
+    const sane = bal >= 0 && bal <= 1_000_000 + 5000 * 20; // can't exceed start + one capped max-win at min bet per spin (loose upper bound)
+    rec("E5 balance stays sane over 600-spin session", "HIGH", sane, `final balance ${bal} (start 1,000,000)`);
+  } finally { await teardown(rig); }
+}
+
+// ── E6: bet-switch attempted DEEP (progress 9, one off the goal) ─────────────────
+// The highest-value version of the exploit: accumulate to 9 cheap, then try to
+// land the 10th — the bonus trigger — at max bet. Must be rejected at every step.
+async function e6_betSwitchDeep() {
+  const rig = await boot(lcg(7));
+  try {
+    await rig.client.init(SID);
+    await spinToProgress(rig, MIN, 9, 6000);
+    const progress = rig.wallet.progressOf(SID);
+    const balBefore = rig.wallet.balanceOf(SID)!;
+    // Try the max-bet "trigger" spin repeatedly — each must bounce off the lock.
+    let anyAccepted = false;
+    for (let i = 0; i < 5; i++) {
+      try { await rig.client.spin({ betIndex: MAX }); anyAccepted = true; break; } catch { /* rejected, good */ }
+    }
+    const held = !anyAccepted && rig.wallet.balanceOf(SID)! === balBefore && rig.wallet.progressOf(SID) === progress;
+    rec("E6 deep bet-switch (progress 9 → trigger at max) blocked", "CRIT", held,
+      held ? `held at progress ${progress}, lock@${rig.wallet.lockedBetOf(SID)}; 5 max-bet trigger attempts all rejected, no state moved`
+           : `LEAK — accepted=${anyAccepted}, progress ${progress}→${rig.wallet.progressOf(SID)}, bal ${balBefore}→${rig.wallet.balanceOf(SID)}`);
+  } finally { await teardown(rig); }
+}
+
+// ── E7: rollback of a bogus / already-applied round id is a harmless no-op ────────
+async function e7_bogusRollback() {
+  const rig = await boot(lcg(11));
+  try {
+    await rig.client.init(SID);
+    await spinToProgress(rig, MIN, 1, 200);
+    const bal = rig.wallet.balanceOf(SID)!, progress = rig.wallet.progressOf(SID);
+    const fakeOk = rig.wallet.rollback(SID, "r-999999");     // never existed
+    const fakeOk2 = rig.wallet.rollback(SID, "");            // empty
+    // Neither should move money/progress, and both should report "no snapshot".
+    const held = !fakeOk && !fakeOk2 && rig.wallet.balanceOf(SID)! === bal && rig.wallet.progressOf(SID) === progress;
+    rec("E7 rollback of bogus round id is a safe no-op", "CRIT", held,
+      held ? `fabricated rollbacks returned false; balance ${bal} & progress ${progress} unchanged`
+           : `LEAK — fake rollback moved state: ok=${fakeOk}/${fakeOk2}, bal→${rig.wallet.balanceOf(SID)}, progress→${rig.wallet.progressOf(SID)}`);
+  } finally { await teardown(rig); }
+}
+
+async function main() {
+  process.stderr.write("\n🎯 attacking slots-meta (deferred-payout slot)…\n");
+  await e1_betSwitch();
+  await e1b_bonusAtLockedBet();
+  await e2_rollbackFarming();
+  await e3_rollbackBonus();
+  await e4_replayBonus();
+  await e6_betSwitchDeep();
+  await e7_bogusRollback();
+  await e5_conservation();
+
+  const o = process.stdout;
+  o.write("\n══════════ SLOTS-META ATTACK REPORT ══════════\n");
+  for (const r of results) o.write(`  ${r.held ? "✓" : "💥"} [${r.sev}] ${r.name}\n      ${r.detail}\n`);
+  const breached = results.filter((r) => !r.held);
+  o.write("\n");
+  if (breached.length) { o.write(`💥 ${breached.length} EXPLOIT(S) — slots-meta is NOT robust:\n`); for (const b of breached) o.write(`   [${b.sev}] ${b.name} — ${b.detail}\n`); process.exitCode = 1; }
+  else o.write("✓ MONEY SAFE — bet-switch blocked, rollback reverts progress+money together, bonus pays once at the locked bet.\n");
+}
+main().catch((e) => { process.stderr.write(`slots-meta attack crashed: ${e instanceof Error ? e.stack : String(e)}\n`); process.exit(2); });

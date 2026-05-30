@@ -1,8 +1,8 @@
 {
-  "name": "@open-rgs-examples/plinko",
+  "name": "@open-rgs-examples/slots-meta",
   "version": "1.0.0",
   "private": true,
-  "description": "Plinko — drop a ball through pegs into a bucket. Pure variance, with a payout table solved to the target RTP.",
+  "description": "Meta-progression slot: scatters give +1 persistent progress; 10 progress pays a bonus. Deferred payout made safe by a bet-aware adapter (stake-lock + rollback-safe carry).",
   "type": "module",
   "scripts": {
     "dev": "bun src/index.ts",
@@ -11,7 +11,7 @@
   "dependencies": {
     "@open-rgs/core": "^1.0.0",
     "@open-rgs/contract": "^1.0.0",
-    "@open-rgs-examples/mock-platform": "workspace:*",
+    "@open-rgs-examples/meta-platform": "workspace:*",
     "@open-rgs-examples/lua-kit": "workspace:*"
   },
   "devDependencies": {

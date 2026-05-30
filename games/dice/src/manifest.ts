@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { webcrypto } from "node:crypto";
 import { loadLuaMath } from "@open-rgs/core";
 import { defineGame, type GameManifest } from "@open-rgs/contract";
+import { paramsOnly } from "@open-rgs-examples/lua-kit";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 
@@ -25,6 +26,7 @@ export async function buildManifest(opts: BuildOptions = {}): Promise<GameManife
     rng: opts.rng ?? cryptoRng,
     timeoutMs: opts.timeoutMs ?? 1000,
     marks: opts.marks ?? false,
+    extensions: paramsOnly,
   });
 
   return defineGame({

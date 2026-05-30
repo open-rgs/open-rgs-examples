@@ -1,0 +1,21 @@
+{
+  "id": "slots-meta",
+  "title": "Meta Slots",
+  "emoji": "🎯",
+  "kind": "simple",
+  "category": "slots",
+  "rtp": 0.94,
+  "tagline": "Scatters don't trigger — they fill a meter. 10 → bonus.",
+  "mechanic": "Each scatter gives +1 PERSISTENT progress (carried across rounds). At 10 progress the next spin pays a bonus and resets the meter. Base line wins pay every spin. Because the bonus is a DEFERRED payout earned cheap and cashed later, it's exploitable by bet-switching and round-rollback — so it runs on a bet-aware adapter that locks your stake for the whole meter and rolls money+progress back together.",
+  "showcases": [
+    "meta-progression via carry (persistent cross-round state)",
+    "the bet-switch exploit and the stake-lock that kills it",
+    "the rollback-farming exploit and atomic (balance,carry) commit",
+    "why this defense CANNOT live in currency-blind math"
+  ],
+  "params": [],
+  "maxWin": "capped 5,000×",
+  "strategyDependent": false,
+  "mathTest": "Two-part RTP (base line wins + amortised bonus). Attacked in tools/attack: bet-switch is rejected (StakeLockViolation), rollback reverts progress with the money — no minting.",
+  "suggestedPort": 8090
+}

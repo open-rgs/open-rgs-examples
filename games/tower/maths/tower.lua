@@ -64,16 +64,11 @@ return {
   },
 
   open = function(_prev, ctx)
-    local rows, tiles, danger = SIM_ROWS, SIM_TILES, SIM_DANGER
-    if ctx and ctx.params then
-      if ctx.params.rows then rows = math.floor(tonumber(ctx.params.rows) or rows) end
-      if ctx.params.tiles then tiles = math.floor(tonumber(ctx.params.tiles) or tiles) end
-      if ctx.params.danger then danger = math.floor(tonumber(ctx.params.danger) or danger) end
-    end
-    if tiles < 2 then tiles = 2 end
-    if rows < 1 then rows = 1 end
-    if danger < 1 then danger = 1 end
-    if danger > tiles - 1 then danger = tiles - 1 end
+    -- Safe client-param reads: null/object/NaN can't crash us (see lua-kit).
+    -- Read tiles first so danger can clamp against it; all floored to ints.
+    local rows   = params.num(ctx, "rows", SIM_ROWS, 1, 20, true)
+    local tiles  = params.num(ctx, "tiles", SIM_TILES, 2, 6, true)
+    local danger = params.num(ctx, "danger", SIM_DANGER, 1, tiles - 1, true)
 
     local state = {
       dangers = build_dangers(rows, tiles, danger),

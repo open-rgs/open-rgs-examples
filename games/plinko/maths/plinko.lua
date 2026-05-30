@@ -54,13 +54,10 @@ return {
   },
 
   play = function(_prev, ctx)
-    local rows, risk = SIM_ROWS, SIM_RISK
-    if ctx and ctx.params then
-      if ctx.params.rows then rows = math.floor(tonumber(ctx.params.rows) or rows) end
-      if ctx.params.risk then risk = tostring(ctx.params.risk) end
-    end
-    if rows < 8 then rows = 8 end
-    if rows > 20 then rows = 20 end
+    -- Safe client-param reads (null/object/NaN can't crash us — see lua-kit).
+    -- rows clamped to [8, 20] & floored; risk restricted to the known set.
+    local rows = params.num(ctx, "rows", SIM_ROWS, 8, 20, true)
+    local risk = params.str(ctx, "risk", SIM_RISK, { low = true, medium = true, high = true })
     local ratio = RISK_RATIO[risk] or RISK_RATIO[SIM_RISK]
     local payouts = (rows == SIM_ROWS and risk == SIM_RISK)
       and default_payouts or build_payouts(rows, ratio)

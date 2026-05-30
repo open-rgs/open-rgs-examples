@@ -31,14 +31,10 @@ return {
   },
 
   play = function(_prev, ctx)
-    -- Player's chosen target. Defaults to 2.00 when none is supplied (the
-    -- simulator never passes params, so this is what it measures).
-    local target = SIM_TARGET
-    if ctx and ctx.params and ctx.params.target then
-      target = tonumber(ctx.params.target) or SIM_TARGET
-    end
-    if target < MIN_TARGET then target = MIN_TARGET end
-    if target > MAX_TARGET then target = MAX_TARGET end
+    -- Player's chosen target, read safely (the simulator passes none → default;
+    -- a hostile client can't crash us with a null/object — see lua-kit/params).
+    -- Defaults to 2.00 and is clamped to [MIN_TARGET, MAX_TARGET].
+    local target = params.num(ctx, "target", SIM_TARGET, MIN_TARGET, MAX_TARGET)
 
     -- Draw the result. With probability (1 - RTP) it busts at 1.00 (below any
     -- target); otherwise it's a heavy-tailed win-branch value in [1, inf) with

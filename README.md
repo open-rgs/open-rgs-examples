@@ -38,11 +38,18 @@ bun run sim  --game limbo    # measure the RTP
 | 🐔 | [Chicken Road](games/chicken-road) | complex | 99% | a single-action ladder with difficulty |
 | 📈 | [Crash](games/crash) | complex | 99% | a tick-based ladder (and why live cash-out needs a timer) |
 | 🃏 | [Blackjack](games/blackjack) | complex | 97.4% | the strategy-**dependent** counter-example |
+| 🎰 | [Classic Slots](games/slots-classic) | simple | 94% | reels + free spins, resolved **atomically** (safe shape) |
+| 🎯 | [Meta Slots](games/slots-meta) | simple | 94% | scatter→+1 progress, 10→bonus; deferred payout, **hardened** |
 
-Seven of them are **constant-EV**: the RTP doesn't depend on how you play, which
-is what makes them certifiable with a single number. Blackjack is the exception
-that proves the rule — its RTP is whatever your strategy earns. That contrast is
-the heart of [**how to math-test these games**](docs/math-testing.md).
+Most are **constant-EV**: the RTP doesn't depend on how you play, which is what
+makes them certifiable with a single number. Blackjack is the exception that
+proves the rule — its RTP is whatever your strategy earns
+([how to math-test these games](docs/math-testing.md)). The two **slots** carry a
+different lesson: Classic resolves its feature atomically and is safe by
+construction, while Meta defers a bonus payout across rounds — which invites
+bet-switching and rollback farming, defended by a bet-aware adapter. That story
+is [**docs/slots.md**](docs/slots.md), and the whole antifraud red-team is
+[**docs/security.md**](docs/security.md).
 
 ## Layout
 
@@ -51,19 +58,23 @@ open-rgs-examples/
 ├── packages/
 │   ├── mock-platform/   # 🧩 a PlatformAdapter you can read in one sitting —
 │   │                    #    holds balance, dedupes, and logs every wallet call
-│   └── lua-kit/         #    a JSON codec injected into the complex maths' Lua
+│   ├── meta-platform/   # 🔒 bet-aware adapter for slots-meta: stake-lock +
+│   │                    #    atomic (balance,carry) commit with rollback
+│   └── lua-kit/         #    JSON + safe-param readers injected into the maths' Lua
 ├── games/
-│   ├── limbo/ dice/ plinko/           # simple rounds
-│   ├── mines/ tower/ chicken-road/ crash/   # survival ladders
-│   └── blackjack/                     # strategy-dependent
+│   ├── limbo/ dice/ plinko/                  # simple rounds
+│   ├── mines/ tower/ chicken-road/ crash/    # survival ladders
+│   ├── blackjack/                            # strategy-dependent
+│   └── slots-classic/ slots-meta/            # slots (atomic vs deferred payout)
 │       ├── maths/<game>.lua    # the game math (Lua)
 │       ├── src/manifest.ts     # loadLuaMath + defineGame
 │       ├── src/index.ts        # createServer({ manifest, platform, transport })
 │       └── game.json           # gallery metadata
 ├── tools/
-│   ├── simulator/       # 🎰 bun run sim  --game <name> [--compare]
-│   └── play/            # 🎮 bun run play --game <name>
-└── docs/                #    the gallery site + the math-testing guide
+│   ├── simulator/       # bun run sim  --game <name> [--compare]
+│   ├── play/            # bun run play --game <name>
+│   └── attack/          # 🗡️ bun run attack  ·  bun run attack:meta (antifraud red-team)
+└── docs/                #    gallery site + math-testing + slots + security guides
 ```
 
 Each game is self-contained: `maths/<game>.lua` is the math, `src/index.ts`
@@ -99,6 +110,25 @@ bun run sim --game blackjack --compare   # strategy-dependent: only basic passes
 Read [**docs/math-testing.md**](docs/math-testing.md) for the full story: RTP as
 expected value, confidence intervals and verdicts, the constant-EV fair-
 multiplier identity, strategy/exploit testing, and how many spins you need.
+
+## Breaking the games (antifraud red-team)
+
+`tools/attack` boots each game's **real server** and attacks it over the
+WebSocket protocol — trying to mint money, double-spend, over-climb a ladder,
+forge state, or smuggle a payout out of a busted round. Every test asserts a
+hard money-conservation invariant.
+
+```bash
+bun run attack                  # whole battery, all games
+bun run attack:meta             # the slots-meta red-team (bet-switch + rollback)
+```
+
+Across the board: **no money exploit holds** — core blocks bet injection, dedupes
+replays, caps wins, and conserves the ledger to the cent; the meta-slot's
+deferred bonus is defended by a stake-lock and atomic money+state rollback. The
+findings (and the one runtime robustness gap that has no money impact) are
+written up in [**docs/security.md**](docs/security.md) and
+[**docs/slots.md**](docs/slots.md).
 
 ## Built on open-rgs
 

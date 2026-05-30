@@ -21,7 +21,9 @@
   "scripts": {
     "sim": "bun tools/simulator/src/index.ts",
     "play": "bun tools/play/src/index.ts",
-    "typecheck": "tsc --noEmit -p packages/mock-platform && tsc --noEmit -p packages/lua-kit && tsc --noEmit -p tools/play && tsc --noEmit -p tools/simulator && tsc --noEmit -p games/limbo && tsc --noEmit -p games/dice && tsc --noEmit -p games/plinko && tsc --noEmit -p games/mines && tsc --noEmit -p games/tower && tsc --noEmit -p games/chicken-road && tsc --noEmit -p games/crash && tsc --noEmit -p games/blackjack",
+    "attack": "bun tools/attack/src/index.ts",
+    "attack:meta": "bun tools/attack/src/slots-meta.ts",
+    "typecheck": "tsc --noEmit -p packages/mock-platform && tsc --noEmit -p packages/meta-platform && tsc --noEmit -p packages/lua-kit && tsc --noEmit -p tools/play && tsc --noEmit -p tools/simulator && tsc --noEmit -p tools/attack && tsc --noEmit -p games/limbo && tsc --noEmit -p games/dice && tsc --noEmit -p games/plinko && tsc --noEmit -p games/mines && tsc --noEmit -p games/tower && tsc --noEmit -p games/chicken-road && tsc --noEmit -p games/crash && tsc --noEmit -p games/blackjack && tsc --noEmit -p games/slots-classic && tsc --noEmit -p games/slots-meta",
     "docs:build": "bun docs/build.ts"
   },
   "devDependencies": {

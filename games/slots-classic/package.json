@@ -1,8 +1,8 @@
 {
-  "name": "@open-rgs-examples/plinko",
+  "name": "@open-rgs-examples/slots-classic",
   "version": "1.0.0",
   "private": true,
-  "description": "Plinko — drop a ball through pegs into a bucket. Pure variance, with a payout table solved to the target RTP.",
+  "description": "Classic 5×3 video slot with scatter-triggered free spins, resolved atomically inside the trigger spin. The 'safe by construction' slot.",
   "type": "module",
   "scripts": {
     "dev": "bun src/index.ts",
