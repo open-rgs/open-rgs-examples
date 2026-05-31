@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { webcrypto } from "node:crypto";
 import { loadLuaMath } from "@open-rgs/core";
 import { defineGame, type GameManifest } from "@open-rgs/contract";
-import { paramsOnly } from "@open-rgs-examples/lua-kit";
+import { slotKit } from "@open-rgs-examples/lua-kit";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 
@@ -20,14 +20,23 @@ export interface BuildOptions {
   rng?: () => number;
   timeoutMs?: number;
   marks?: boolean;
+  /** Multiply every paytable entry by this (default 1). The RTP autotuner
+   *  injects it to solve the paytable scale that hits a target RTP; the math
+   *  reads the chunk-local `PAY_SCALE`. */
+  payScale?: number;
 }
 
 export async function buildManifest(opts: BuildOptions = {}): Promise<GameManifest> {
+  const payScale = opts.payScale ?? 1;
   const math = await loadLuaMath(resolve(here, "../maths/slots-classic.lua"), {
     rng: opts.rng ?? cryptoRng,
     timeoutMs: opts.timeoutMs ?? 1000,
     marks: opts.marks ?? false,
-    extensions: paramsOnly,
+    // slotKit + a one-line prelude exposing the autotuner's pay scale.
+    extensions: [
+      ...slotKit,
+      { name: "payscale", version: "0.1.0", transform: (src: string) => `local PAY_SCALE = ${payScale}\n${src}` },
+    ],
   });
 
   return defineGame({

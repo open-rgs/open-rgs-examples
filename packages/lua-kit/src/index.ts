@@ -37,6 +37,7 @@ import type { LuaExtension } from "@open-rgs/contract";
 // string). Each ends with `return <module>`; the IIFE captures that.
 const jsonLua = readFileSync(new URL("./json.lua", import.meta.url), "utf8");
 const paramsLua = readFileSync(new URL("./params.lua", import.meta.url), "utf8");
+const slotLua = readFileSync(new URL("./slot.lua", import.meta.url), "utf8");
 
 /** Injects `local json = { encode, decode }` at the top of the math file. */
 export const jsonExtension: LuaExtension = {
@@ -52,8 +53,21 @@ export const paramsExtension: LuaExtension = {
   transform: (source: string) => `local params = (function()\n${paramsLua}\nend)()\n${source}`,
 };
 
+/** Injects `local slot = { reel, grid, count, paylines }` — the reel/payline/
+ *  scatter boilerplate, so a slot author writes data + a few calls, not loops. */
+export const slotExtension: LuaExtension = {
+  name: "slot",
+  version: "0.1.0",
+  transform: (source: string) => `local slot = (function()\n${slotLua}\nend)()\n${source}`,
+};
+
 /** For simple games: just the safe param reader. */
 export const paramsOnly: readonly LuaExtension[] = [paramsExtension];
 
 /** For complex games: JSON state codec + safe param reader. */
 export const exampleExtensions: readonly LuaExtension[] = [jsonExtension, paramsExtension];
+
+/** For slot games: the slot kit + safe param reader (add jsonExtension too if
+ *  the slot carries cross-round state, like slots-meta). */
+export const slotKit: readonly LuaExtension[] = [slotExtension, paramsExtension];
+export const slotKitWithState: readonly LuaExtension[] = [slotExtension, paramsExtension, jsonExtension];
