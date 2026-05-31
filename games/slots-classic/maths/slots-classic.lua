@@ -11,19 +11,20 @@
 -- bet can change underneath it — that's the exploitable shape, and why it needs
 -- a bet-aware adapter. Here, the math alone is sufficient. (See docs/slots.md.)
 --
+-- The reel/payline/scatter mechanics come from the `slot` kit (lua-kit prelude),
+-- so this file is DATA — weights, a paytable, a line list — plus a few calls.
 -- Currency-blind as always: we return a dimensionless multiplier; core does
--- `multiplier × bet`. `params` (safe reader) is injected by lua-kit.
+-- `multiplier × bet`.
 
 local RTP = 0.94
+local REELS, ROWS = 5, 3
 
--- Symbols. SCAT = scatter (triggers free spins), others are line-pay symbols.
--- Weights are per-reel-cell draw probabilities (must look plausible; the RTP is
--- whatever the sim measures — see tools/simulator).
-local SYMBOLS = { "SCAT", "W", "A", "K", "Q", "J", "T", "N" }
-local WEIGHT  = { SCAT = 2,  W = 3,  A = 6, K = 8, Q = 10, J = 12, T = 14, N = 16 }
+-- Symbols + per-cell draw weights. SCAT = scatter (triggers free spins),
+-- W = wild (substitutes), rest are line-pay symbols.
+local WEIGHTS = { SCAT = 2, W = 3, A = 6, K = 8, Q = 10, J = 12, T = 14, N = 16 }
 
--- 3-of-a-kind / 4 / 5 left-to-right pays (× line bet share). W substitutes.
--- Pays calibrated so the 10 lines + free spins integrate to ~RTP (sim-verified).
+-- 3/4/5-of-a-kind pays as a fraction of TOTAL bet per winning line (the kit
+-- multiplies by lineShare = 1/#LINES). Calibrated so the game integrates to RTP.
 local PAY = {
   W = { [3] = 40, [4] = 200, [5] = 750 },
   A = { [3] = 22, [4] = 90,  [5] = 380 },
@@ -40,71 +41,24 @@ local LINES = {
   {1,1,2,3,3}, {3,3,2,1,1}, {2,1,1,1,2}, {2,3,3,3,2}, {1,2,1,2,1},
 }
 local FS_AWARD = { [3] = 10, [4] = 15, [5] = 20 }   -- scatters → free-spin count
+local FS_MULT = 2.0                                  -- free spins pay 2× on lines
 
--- Build a weighted-pick closure over SYMBOLS/WEIGHT.
-local TOTAL_W = 0
-for _, s in ipairs(SYMBOLS) do TOTAL_W = TOTAL_W + WEIGHT[s] end
-local function draw()
-  local r = host.rng_next() * TOTAL_W
-  local acc = 0
-  for _, s in ipairs(SYMBOLS) do
-    acc = acc + WEIGHT[s]
-    if r < acc then return s end
+-- The RTP autotuner injects PAY_SCALE (default 1) to solve the paytable scale
+-- that hits a target RTP. Apply it once at load so the whole table scales.
+local SCALE = PAY_SCALE or 1
+if SCALE ~= 1 then
+  for _, runs in pairs(PAY) do
+    for k, v in pairs(runs) do runs[k] = v * SCALE end
   end
-  return SYMBOLS[#SYMBOLS]
 end
 
--- Spin a 5×3 grid: grid[reel][row], reel 1..5, row 1..3.
-local function spin_grid()
-  local g = {}
-  for reel = 1, 5 do
-    g[reel] = { draw(), draw(), draw() }
-  end
-  return g
-end
+local draw = slot.reel(WEIGHTS)                      -- weighted sampler (kit)
+local PAY_OPTS = { wild = "W", scatter = "SCAT", lineShare = 1.0 / #LINES }
 
-local function count_scatters(g)
-  local n = 0
-  for reel = 1, 5 do
-    for row = 1, 3 do
-      if g[reel][row] == "SCAT" then n = n + 1 end
-    end
-  end
-  return n
-end
-
--- Evaluate the 10 lines. Line bet share = 1/#LINES of total bet, so multipliers
--- here are expressed as fractions of the TOTAL bet (paytable × (1/#lines)).
-local LINE_SHARE = 1.0 / #LINES
-local function evaluate_lines(g)
-  local total = 0
-  for _, line in ipairs(LINES) do
-    -- symbols along the line, left to right
-    local syms = {}
-    for reel = 1, 5 do syms[reel] = g[reel][line[reel]] end
-    -- leading symbol, treating W as wild: pick the first non-W as the pay sym
-    local pay_sym = syms[1]
-    if pay_sym == "W" then
-      for reel = 2, 5 do if syms[reel] ~= "W" then pay_sym = syms[reel]; break end end
-    end
-    if pay_sym ~= "SCAT" and PAY[pay_sym] then
-      local run = 0
-      for reel = 1, 5 do
-        local s = syms[reel]
-        if s == pay_sym or s == "W" then run = run + 1 else break end
-      end
-      local p = PAY[pay_sym][run]
-      if p then total = total + p * LINE_SHARE end
-    end
-  end
+-- A line evaluation over a fresh grid → win as a fraction of total bet.
+local function eval_grid()
+  local total = slot.paylines(slot.grid(draw, REELS, ROWS), LINES, PAY, PAY_OPTS)
   return total
-end
-
--- One free spin: lines pay 2× (classic FS boost); scatters don't re-trigger
--- here (kept simple — re-triggers are a variance knob, not a safety concern).
-local FS_MULT = 2.0
-local function free_spin()
-  return evaluate_lines(spin_grid()) * FS_MULT
 end
 
 return {
@@ -117,9 +71,9 @@ return {
   },
 
   play = function(_prev, _ctx)
-    local g = spin_grid()
-    local base = evaluate_lines(g)
-    local scatters = count_scatters(g)
+    local g = slot.grid(draw, REELS, ROWS)
+    local base = slot.paylines(g, LINES, PAY, PAY_OPTS)
+    local scatters = slot.count(g, "SCAT")
 
     host.mark.contribute("base", base)
     local total = base
@@ -131,7 +85,7 @@ return {
       local fs_total = 0
       local fs_results = {}
       for i = 1, fs do
-        local w = free_spin()
+        local w = eval_grid() * FS_MULT
         fs_total = fs_total + w
         fs_results[i] = w
       end

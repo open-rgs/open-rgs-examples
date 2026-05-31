@@ -272,6 +272,29 @@ add your own there.
 | Chicken Road | A | 99% | `sim --game chicken-road --compare` |
 | Crash | A | 99% | `sim --game crash --compare` |
 | Blackjack | B | 97.4% | `sim --game blackjack --compare` — only `basic` ≈ declared |
+| Classic Slots | A | 94% | `sim --game slots-classic` |
+| Meta Slots | A | 94% | `sim --game slots-meta` + `bun run attack:meta` |
+
+## 8. Hitting a target RTP without hand-tuning
+
+A slot's win is (almost) linear in its paytable — scale every pay by *k* and the
+RTP scales by *k*. So instead of guessing pay values, declare the target and let
+the autotuner solve the scale:
+
+```bash
+bun run autotune --game slots-classic --target 0.94
+```
+
+It measures the RTP at scale 1 with a fixed seed, solves `scale = target /
+measured`, and **verifies at the same seed** (so Monte-Carlo noise can't
+masquerade as a wrong answer — a same-seed verify isolates the scale as the only
+change). For a linear game the residual is 0.000%; a non-linear one (a counter
+threshold, a cap) shows the residual so you know to tune that part separately.
+This is the manual "I scaled the pays ×7.4 to reach 94%" step, made exact.
+
+The slot maths read this via a `payScale` build option (a one-line `PAY_SCALE`
+prelude the manifest injects), so the tool never edits your Lua — it prints the
+factor and you apply it.
 
 ---
 
