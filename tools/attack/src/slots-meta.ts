@@ -16,6 +16,13 @@
 //                        (no "keep the payout, replay the trigger").
 //   E4  replay           re-fire the bonus spin's idempotency key → paid once.
 //   E5  conservation     long mixed session → ledger identity holds exactly.
+//   E6-E9 deeper bet-switch + rollback (out-of-order, LIFO, double-reverse).
+//   E10 carry forgery    inject progress via client params → ignored (carry is
+//                        wallet-owned, the math never reads params for progress).
+//   E11 reconnect        stake-lock survives a dropped + reconnected session.
+//   E12 concurrency      two connections race a min/max-bet spin → off-bet loses.
+//   E13 per-session      progress/lock can't leak across session ids.
+//   E14 bounded+funded   250-spin run keeps the meter bounded, every bonus funded.
 //
 // The CRIT invariant throughout: the house can't be made to pay out value it
 // wasn't funded for. A blocked attack is a pass; a money gain is an exploit.
@@ -41,7 +48,7 @@ async function build(rng?: () => number): Promise<GameManifest> {
 function lcg(seed: number) { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
 
 let portCounter = 9600 + (process.pid % 300);
-interface Rig { handle: ServerHandle; client: RgsClient; wallet: MetaPlatform; }
+interface Rig { handle: ServerHandle; client: RgsClient; wallet: MetaPlatform; port: number; }
 async function boot(rng?: () => number): Promise<Rig> {
   for (let i = 0; i < 12; i++) {
     const port = portCounter++;
@@ -50,12 +57,20 @@ async function boot(rng?: () => number): Promise<Rig> {
       const handle = await createServer({ manifest: await build(rng), platform: wallet, transport: binaryTransport({ port }), version: "atk" });
       const client = new RgsClient(`ws://localhost:${port}/wss`);
       await client.connect();
-      return { handle, client, wallet };
+      return { handle, client, wallet, port };
     } catch { /* port busy — retry */ }
   }
   throw new Error("boot failed");
 }
 async function teardown(r: Rig) { try { r.client.disconnect(); } catch {} try { await r.handle.stop({ drainMs: 0 }); } catch {} }
+
+/** A second independent client on the SAME server/session — for reconnect and
+ *  concurrency attacks where one player drives two connections. */
+async function secondClient(rig: Rig): Promise<RgsClient> {
+  const c = new RgsClient(`ws://localhost:${rig.port}/wss`);
+  await c.connect();
+  return c;
+}
 
 interface Result { name: string; sev: "CRIT" | "HIGH"; held: boolean; detail: string }
 const results: Result[] = [];
@@ -313,6 +328,117 @@ async function e9_lifoAndDoubleReverse() {
   } finally { await teardown(rig); }
 }
 
+// ── E10: carry/progress forgery via params ──────────────────────────────────────
+// A malicious client tries to inject meter progress through the only field it
+// controls (ctx.params) — spin({ params: { progress: 9 } }) — to jump to a bonus
+// cheaply. The math reads progress from the wallet-owned CARRY, never from
+// params, so the meter must not jump toward the forged value.
+async function e10_carryForgeryViaParams() {
+  const rig = await boot(lcg(10));
+  try {
+    await rig.client.init(SID);
+    const p0 = rig.wallet.progressOf(SID);
+    await rig.client.spin({ betIndex: MIN, params: { progress: 9, lockedBet: null, meter: 9, carry: JSON.stringify({ progress: 9 }) } } as any);
+    const p1 = rig.wallet.progressOf(SID);
+    // progress may legitimately +1 if this spin landed a scatter; it must NEVER
+    // jump toward the forged 9.
+    const held = (p1 - p0) <= 1;
+    rec("E10 carry/progress forgery via params is ignored", "CRIT", held,
+      `progress ${p0}->${p1} (forged params asked for 9); meter advanced only by real scatters`);
+  } finally { await teardown(rig); }
+}
+
+// ── E11: stake-lock survives a reconnect ────────────────────────────────────────
+// Build progress at min bet (lock pins to it), drop the connection, reconnect a
+// fresh client to the SAME session, then attempt a max-bet spin. The lock is
+// wallet-side session state restored on openSession — it must still reject.
+async function e11_lockSurvivesReconnect() {
+  const rig = await boot(lcg(11));
+  try {
+    await rig.client.init(SID);
+    await spinToProgress(rig, MIN, 2);
+    const lockedAt = rig.wallet.lockedBetOf(SID);
+    const progress = rig.wallet.progressOf(SID);
+    rig.client.disconnect();
+    const c2 = await secondClient(rig);
+    await c2.init(SID);
+    let blocked = false;
+    try { await c2.spin({ betIndex: MAX }); } catch { blocked = true; }
+    const held = blocked && rig.wallet.lockedBetOf(SID) === lockedAt && rig.wallet.progressOf(SID) === progress;
+    rec("E11 stake-lock survives reconnect", "CRIT", held,
+      `pre locked@${lockedAt} progress=${progress}; post-reconnect max-bet spin ${blocked ? "rejected" : "ACCEPTED"}, lock=${rig.wallet.lockedBetOf(SID)}`);
+    c2.disconnect();
+  } finally { await teardown(rig); }
+}
+
+// ── E12: concurrent off-bet spin races the lock ─────────────────────────────────
+// Two clients on the same session fire a min-bet and a max-bet spin at once while
+// a meter is live. Core serializes per-session ops and the lock is checked before
+// money moves, so the off-bet spin must lose the race — no interleaving settles
+// both, no money minted.
+async function e12_concurrentBetSwitchRace() {
+  const rig = await boot(lcg(12));
+  try {
+    await rig.client.init(SID);
+    await spinToProgress(rig, MIN, 2);
+    const lockedAt = rig.wallet.lockedBetOf(SID);
+    const balBefore = rig.wallet.balanceOf(SID)!;
+    const c2 = await secondClient(rig);
+    await c2.init(SID);
+    const results = await Promise.allSettled([
+      rig.client.spin({ betIndex: MIN }),
+      c2.spin({ betIndex: MAX }),
+    ]);
+    const maxBetRejected = results[1]!.status === "rejected";
+    const bal = rig.wallet.balanceOf(SID)!;
+    const noMaxBetSettle = bal >= balBefore - 20; // at most one min-bet (20) debit
+    const held = maxBetRejected && rig.wallet.lockedBetOf(SID) === lockedAt && noMaxBetSettle;
+    rec("E12 concurrent off-bet spin loses the race (lock holds)", "CRIT", held,
+      `locked@${lockedAt}; concurrent max-bet spin ${maxBetRejected ? "rejected" : "ACCEPTED"}; bal ${balBefore}->${bal}`);
+    c2.disconnect();
+  } finally { await teardown(rig); }
+}
+
+// ── E13: progress + lock are strictly per-session ───────────────────────────────
+// A different session id can't inherit another's meter, and switching session id
+// mid-meta is no escape: a new session is a new player with zero progress.
+async function e13_progressIsPerSession() {
+  const rig = await boot(lcg(13));
+  try {
+    await rig.client.init(SID);
+    await spinToProgress(rig, MIN, 3);
+    const victimProgress = rig.wallet.progressOf(SID);
+    const other = "attacker-2";
+    const c2 = await secondClient(rig);
+    await c2.init(other);
+    const otherProgress = rig.wallet.progressOf(other);
+    const otherLock = rig.wallet.lockedBetOf(other);
+    const held = victimProgress >= 3 && otherProgress === 0 && otherLock === null;
+    rec("E13 progress + lock are per-session (no cross-session leak)", "CRIT", held,
+      `${SID} progress=${victimProgress}; fresh ${other} progress=${otherProgress} lock=${otherLock ?? "none"}`);
+    c2.disconnect();
+  } finally { await teardown(rig); }
+}
+
+// ── E14: progress bounded + every bonus funded over a long session ──────────────
+async function e14_boundedProgressFundedBonuses() {
+  const rig = await boot(lcg(14));
+  try {
+    await rig.client.init(SID);
+    let maxProgressSeen = 0, sane = true;
+    for (let i = 0; i < 250; i++) {
+      await rig.client.spin({ betIndex: MIN });
+      const p = rig.wallet.progressOf(SID);
+      maxProgressSeen = Math.max(maxProgressSeen, p);
+      if (p < 0 || p > 50) { sane = false; break; }  // GOAL=10; modulo keeps it small
+    }
+    const bal = rig.wallet.balanceOf(SID)!;
+    const held = sane && bal >= 0 && bal <= 1_000_000 + 250 * 100;
+    rec("E14 progress bounded + every bonus funded over 250 spins", "HIGH", held,
+      `maxProgressSeen=${maxProgressSeen} (bounded), final balance=${bal}`);
+  } finally { await teardown(rig); }
+}
+
 async function main() {
   process.stderr.write("\n🎯 attacking slots-meta (deferred-payout slot)…\n");
   await e1_betSwitch();
@@ -324,6 +450,11 @@ async function main() {
   await e7_bogusRollback();
   await e8_outOfOrderRollback();
   await e9_lifoAndDoubleReverse();
+  await e10_carryForgeryViaParams();
+  await e11_lockSurvivesReconnect();
+  await e12_concurrentBetSwitchRace();
+  await e13_progressIsPerSession();
+  await e14_boundedProgressFundedBonuses();
   await e5_conservation();
 
   const o = process.stdout;
