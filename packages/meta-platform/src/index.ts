@@ -20,12 +20,16 @@
 //      0.20, trigger at 10.00". The lock clears when progress returns to 0
 //      (bonus consumed), so the next meta can start at any bet.
 //
-//   2. ATOMIC (balance, carry) + SNAPSHOT ROLLBACK (kills rollback-farming).
+//   2. ATOMIC (balance, carry) + LIFO ROLLBACK (kills rollback-farming).
 //      Money and progress are written in the SAME settle record. Before applying
-//      a settle we snapshot (balance, carry, lock) keyed by roundId; rollback()
-//      restores all three together. So you can never reverse the money while
-//      keeping the progress, or gain progress and roll back to dodge the debit
-//      — the pair moves as one.
+//      a settle we push the pre-round (balance, carry) onto a LIFO stack;
+//      rollback() pops the LATEST and restores both together. So you can never
+//      reverse the money while keeping the progress, or gain progress and roll
+//      back to dodge the debit — the pair moves as one. And reversal is
+//      LATEST-FIRST: reversing an OLDER round (while newer ones sit on top) is
+//      REJECTED, because restoring its absolute snapshot would silently
+//      over-refund the rounds stacked above it. (This matches the open-rgs core
+//      reversal contract — @open-rgs/contract reverseRound / Guarantee 2.)
 //
 // Carry format (this adapter's contract with slots-meta's Lua):
 //     { "progress": <int 0..GOAL>, "lockedBet": <minor units|null> }
@@ -52,9 +56,15 @@ interface SessionState {
   /** Opaque carry string we hand back on openSession. Source of truth for
    *  cross-round progress + the stake-lock. */
   carry: string | undefined;
-  /** Per-round snapshot of (balance, carry) taken BEFORE the settle was
-   *  applied, so a rollback restores the exact prior state of both. */
-  snapshots: Map<string, { balance: number; carry: string | undefined }>;
+  /** LIFO stack of reversible settled rounds, most recent on top. Each entry is
+   *  the (balance, carry) as it stood BEFORE that round — so a rollback restores
+   *  both halves. A stack, not a map, because reversal is LATEST-FIRST: undoing
+   *  an OLDER round's absolute snapshot would discard the newer rounds on top of
+   *  it and silently over-refund them. (This mirrors @open-rgs/platform-mock and
+   *  the core reversal contract — Guarantee 2, "One Round, One Record".) */
+  reversals: { roundId: string; balanceBefore: number; carryBefore: string | undefined }[];
+  /** roundIds already reversed — a repeated rollback is a safe no-op. */
+  reversed: Set<string>;
 }
 
 function assertMinorUnits(n: number, field: string): void {
@@ -149,10 +159,11 @@ export class MetaPlatform implements PlatformAdapter {
 
     if (cost > s.balance) throw new Error("InsufficientFunds");
 
-    // Mint the round id, then snapshot (balance, carry) BEFORE applying — so a
-    // later rollback(roundId) restores the exact pre-round state of BOTH.
+    // Mint the round id, then push the pre-round (balance, carry) onto the LIFO
+    // reversal stack BEFORE applying — so a later rollback restores both halves,
+    // and only the latest round is reversible.
     const roundId = this.nextRoundId();
-    s.snapshots.set(roundId, { balance: s.balance, carry: s.carry });
+    s.reversals.push({ roundId, balanceBefore: s.balance, carryBefore: s.carry });
 
     // Apply money.
     s.balance = s.balance - cost + req.win;
@@ -183,19 +194,32 @@ export class MetaPlatform implements PlatformAdapter {
 
   // ── rollback support ──────────────────────────────────────────────────────
 
-  /** Reverse a settled round: restore (balance, carry, lock) to the snapshot
-   *  taken before it was applied. This is the operation a real wallet performs
-   *  on a chargeback / reconciliation reversal — and the reason money and
-   *  progress MUST be one record: they roll back together or the player farms
-   *  the gap. Returns true if a snapshot existed. */
+  /** Reverse a settled round — restore (balance, carry, lock) together, the
+   *  operation a real wallet performs on a chargeback / reconciliation reversal.
+   *  Money and progress MUST roll back together or the player farms the gap.
+   *
+   *  LATEST-FIRST (Guarantee 2, "One Round, One Record"): only the most recent
+   *  un-reversed round may be reversed. Reversing an OLDER round would restore a
+   *  snapshot that predates the newer rounds on top of it and silently
+   *  over-refund them — so we reject that rather than apply it. Reversing the
+   *  same round twice, or an unknown round, is a safe no-op. Returns true only
+   *  when a reversal actually happened. */
   rollback(sessionId: string, roundId: string): boolean {
     const s = this.sessions.get(sessionId);
     if (!s) return false;
-    const snap = s.snapshots.get(roundId);
-    if (!snap) return false;
-    s.balance = snap.balance;
-    s.carry = snap.carry;
-    s.snapshots.delete(roundId);
+    if (s.reversed.has(roundId)) { this.log("rollback", `round ${roundId} already reversed — no-op`); return false; }
+    const top = s.reversals[s.reversals.length - 1];
+    if (!top) { this.log("rollback", `round ${roundId} not found — no-op`); return false; }
+    if (top.roundId !== roundId) {
+      // Not the latest round → refuse. Restoring an older absolute snapshot
+      // would discard (and refund) every round stacked on top of it.
+      this.log("rollback", `✋ REJECT non-latest reversal of ${roundId} (latest is ${top.roundId}) — would over-refund`);
+      return false;
+    }
+    s.reversals.pop();
+    s.balance = top.balanceBefore;
+    s.carry = top.carryBefore;
+    s.reversed.add(roundId);
     const c = parseCarry(s.carry);
     this.log("rollback", `round ${roundId} reverted → progress=${c.progress} lockedBet=${c.lockedBet ?? "-"}`, s.balance);
     this.emit({ type: "balanceChanged", sessionId, balance: s.balance, reason: "rollback" });
@@ -212,7 +236,7 @@ export class MetaPlatform implements PlatformAdapter {
   private remember(key: string | undefined, r: RoundReceipt) { if (key !== undefined) this.receipts.set(key, { ...r }); return r; }
   private must(sessionId: string): SessionState {
     let s = this.sessions.get(sessionId);
-    if (!s) { s = { balance: this.startingBalance, carry: undefined, snapshots: new Map() }; this.sessions.set(sessionId, s); }
+    if (!s) { s = { balance: this.startingBalance, carry: undefined, reversals: [], reversed: new Set<string>() }; this.sessions.set(sessionId, s); }
     return s;
   }
   private nextRoundId() { return `r-${++this.roundSeq}`; }

@@ -263,6 +263,56 @@ async function e7_bogusRollback() {
   } finally { await teardown(rig); }
 }
 
+// ── E8: OUT-OF-ORDER rollback over-refund (the bug the first harness missed) ──
+// Settle three rounds, then try to roll back the OLDEST while two newer rounds
+// sit on top. A snapshot-restore adapter would reset to round-1's pre-state and
+// silently refund all three bets. The fixed (LIFO, latest-first) adapter MUST
+// refuse and move nothing.
+async function e8_outOfOrderRollback() {
+  const rig = await boot(lcg(31));
+  try {
+    await rig.client.init(SID);
+    const ids: string[] = [];
+    const balances: number[] = [];
+    // Three spins at the locked min bet (no bonus expected this soon).
+    for (let i = 0; i < 3; i++) {
+      balances.push(rig.wallet.balanceOf(SID)!);
+      const r = await rig.client.spin({ betIndex: MIN });
+      ids.push(r.roundId);
+    }
+    const balAfter3 = rig.wallet.balanceOf(SID)!;
+    // Attempt to reverse the OLDEST round (ids[0]) with ids[1], ids[2] on top.
+    const ok = rig.wallet.rollback(SID, ids[0]!);
+    const balAfterBad = rig.wallet.balanceOf(SID)!;
+    // Must be refused, balance untouched (no over-refund of the newer rounds).
+    const held = !ok && balAfterBad === balAfter3;
+    rec("E8 out-of-order rollback refused — no over-refund", "CRIT", held,
+      held ? `reversing oldest (with 2 newer on top) refused; balance held at ${balAfter3}`
+           : `OVER-REFUND — oldest-round rollback returned ${ok}, balance ${balAfter3}→${balAfterBad} (newer rounds silently refunded)`);
+  } finally { await teardown(rig); }
+}
+
+// ── E9: latest-first rollback chain + double-reverse no-op ──
+async function e9_lifoAndDoubleReverse() {
+  const rig = await boot(lcg(53));
+  try {
+    await rig.client.init(SID);
+    const ids: string[] = [];
+    const preBalances: number[] = [];
+    for (let i = 0; i < 3; i++) { preBalances.push(rig.wallet.balanceOf(SID)!); const r = await rig.client.spin({ betIndex: MIN }); ids.push(r.roundId); }
+    // Reverse newest→oldest; each restores that round's pre-balance exactly.
+    const ok3 = rig.wallet.rollback(SID, ids[2]!); const b2 = rig.wallet.balanceOf(SID)!;
+    const ok2 = rig.wallet.rollback(SID, ids[1]!); const b1 = rig.wallet.balanceOf(SID)!;
+    // Double-reverse the same (already reversed) round → no-op.
+    const dup = rig.wallet.rollback(SID, ids[1]!); const bDup = rig.wallet.balanceOf(SID)!;
+    const ok1 = rig.wallet.rollback(SID, ids[0]!); const b0 = rig.wallet.balanceOf(SID)!;
+    const lifoOk = ok3 && ok2 && ok1 && b2 === preBalances[2] && b1 === preBalances[1] && b0 === preBalances[0];
+    const dupSafe = !dup && bDup === b1;
+    rec("E9 latest-first chain + double-reverse no-op", "CRIT", lifoOk && dupSafe,
+      `LIFO restored ${preBalances[2]}/${preBalances[1]}/${preBalances[0]} (got ${b2}/${b1}/${b0}); double-reverse ${dupSafe ? "no-op ✓" : "MOVED MONEY ✗"}`);
+  } finally { await teardown(rig); }
+}
+
 async function main() {
   process.stderr.write("\n🎯 attacking slots-meta (deferred-payout slot)…\n");
   await e1_betSwitch();
@@ -272,6 +322,8 @@ async function main() {
   await e4_replayBonus();
   await e6_betSwitchDeep();
   await e7_bogusRollback();
+  await e8_outOfOrderRollback();
+  await e9_lifoAndDoubleReverse();
   await e5_conservation();
 
   const o = process.stdout;

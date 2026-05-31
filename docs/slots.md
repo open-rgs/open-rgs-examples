@@ -113,21 +113,33 @@ progress    → 0 :  clear lockedBet                       (meta consumed; re-be
 The check runs **before any money moves**, so a rejected bet-switch costs and
 changes nothing. You accumulate and cash the entire meter at one stake.
 
-### 2. Atomic `(balance, carry)` + snapshot rollback — kills farming
+### 2. Atomic `(balance, carry)` + LIFO rollback — kills farming
 
 Money and progress are written in the **same** settle. Before applying a settle,
-the adapter snapshots `(balance, carry, lock)` keyed by `roundId`;
-`rollback(roundId)` restores all three together:
+the adapter pushes the pre-round `(balance, carry)` onto a **LIFO stack**;
+rollback pops the **latest** and restores both halves together:
 
 ```ts
-// before applying:
-s.snapshots.set(roundId, { balance: s.balance, carry: s.carry });
-// rollback:
-s.balance = snap.balance; s.carry = snap.carry;   // both, or neither
+// on settle, before applying:
+s.reversals.push({ roundId, balanceBefore: s.balance, carryBefore: s.carry });
+// rollback — latest-first only:
+const top = s.reversals[s.reversals.length - 1];
+if (top.roundId !== roundId) return false;          // refuse an older round
+s.reversals.pop();
+s.balance = top.balanceBefore; s.carry = top.carryBefore;  // both, or neither
 ```
 
 So you can never reverse the money while keeping the progress, or gain progress
 and dodge the debit — the pair moves as one unit.
+
+**Why a stack, not a map keyed by round id.** An earlier version keyed snapshots
+by `roundId` and let *any* round be rolled back. That was a real bug, caught by
+the attack harness (E8): rolling back an **older** round restored a snapshot
+that predated the newer rounds on top of it, silently **over-refunding** all of
+them. Reversal must be **latest-first** — only the most recent un-reversed round
+may be reversed; an older one is refused. This is exactly the contract open-rgs
+core now ships as `PlatformAdapter.reverseRound` (Guarantee 2, "One Round, One
+Record"); this adapter mirrors it.
 
 ## Proven, not asserted
 
@@ -146,10 +158,13 @@ protocol. `bun run attack:meta`:
 ✓ [CRIT] E4  bonus spin replay credits once
 ✓ [CRIT] E6  deep bet-switch (progress 9 → trigger at max) blocked
 ✓ [CRIT] E7  rollback of bogus round id is a safe no-op
+✓ [CRIT] E8  out-of-order rollback refused — no over-refund
+             reversing oldest (2 newer on top) refused; balance held
+✓ [CRIT] E9  latest-first chain + double-reverse no-op
 ✓ [HIGH] E5  balance stays sane over 600-spin session
 
-✓ MONEY SAFE — bet-switch blocked, rollback reverts progress+money together,
-  bonus pays once at the locked bet.
+✓ MONEY SAFE — bet-switch blocked, rollback reverts progress+money together
+  (latest-first), bonus pays once at the locked bet.
 ```
 
 The CRIT invariant throughout: **the house can never be made to pay out value it
